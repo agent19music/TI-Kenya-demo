@@ -21,10 +21,20 @@ type DispatchAgency = (typeof dispatchAgencies)[number];
 
 type DispatchModalState = {
   complaintId: string;
-  agency: DispatchAgency;
-  requiresIpoaForm: boolean;
   recommendedAgency: string | null;
-  summary: string | null;
+  draft: {
+    agency: DispatchAgency;
+    recipientEmail: string;
+    complaintText: string;
+    aiSummary: string;
+    aiCategory: string;
+    aiPriority: string;
+    aiConfidence: string;
+    reportCounty: string;
+    senderLocation: string;
+    submittedAt: string;
+    requiresIpoaForm: boolean;
+  };
 };
 
 function toPriorityVariant(priority: string): "high" | "medium" | "low" {
@@ -47,6 +57,16 @@ function formatDate(value: string): string {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function toInputDateTime(value: string): string {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date.toISOString().slice(0, 16);
 }
 
 function truncateText(text: string, maxLength = 120): string {
@@ -149,10 +169,20 @@ export function TriageDashboard({ complaints }: TriageDashboardProps) {
     setIpoaAcknowledged(false);
     setDispatchModal({
       complaintId: complaint.id,
-      agency,
-      requiresIpoaForm: complaint.requires_ipoa_form,
       recommendedAgency: complaint.recommended_agency,
-      summary: complaint.ai_summary,
+      draft: {
+        agency,
+        recipientEmail: "",
+        complaintText: complaint.raw_complaint,
+        aiSummary: complaint.ai_summary || "No summary available",
+        aiCategory: complaint.ai_category,
+        aiPriority: complaint.ai_priority,
+        aiConfidence: String(complaint.ai_confidence),
+        reportCounty: complaint.report_county || "Unknown",
+        senderLocation: [complaint.sender_city, complaint.sender_country].filter(Boolean).join(", ") || "Unknown",
+        submittedAt: toInputDateTime(complaint.created_at),
+        requiresIpoaForm: complaint.requires_ipoa_form,
+      },
     });
   }
 
@@ -170,17 +200,27 @@ export function TriageDashboard({ complaints }: TriageDashboardProps) {
       return;
     }
 
-    const requiresAcknowledgement = dispatchModal.agency === "IPOA" && dispatchModal.requiresIpoaForm;
+    const requiresAcknowledgement = dispatchModal.draft.agency === "IPOA" && dispatchModal.draft.requiresIpoaForm;
     if (requiresAcknowledgement && !ipoaAcknowledged) {
       return;
     }
 
     const formData = new FormData();
     formData.set("complaintId", dispatchModal.complaintId);
-    formData.set("agency", dispatchModal.agency);
+    formData.set("agency", dispatchModal.draft.agency);
+    formData.set("recipientEmail", dispatchModal.draft.recipientEmail);
+    formData.set("complaintText", dispatchModal.draft.complaintText);
+    formData.set("aiSummary", dispatchModal.draft.aiSummary);
+    formData.set("aiCategory", dispatchModal.draft.aiCategory);
+    formData.set("aiPriority", dispatchModal.draft.aiPriority);
+    formData.set("aiConfidence", dispatchModal.draft.aiConfidence);
+    formData.set("reportCounty", dispatchModal.draft.reportCounty);
+    formData.set("senderLocation", dispatchModal.draft.senderLocation);
+    formData.set("submittedAt", dispatchModal.draft.submittedAt);
+    formData.set("requiresIpoaForm", dispatchModal.draft.requiresIpoaForm ? "yes" : "no");
     formData.set("ipoaAcknowledged", ipoaAcknowledged ? "yes" : "no");
 
-    setActiveDispatchKey(`${dispatchModal.complaintId}:${dispatchModal.agency}`);
+    setActiveDispatchKey(`${dispatchModal.complaintId}:${dispatchModal.draft.agency}`);
     startDispatchTransition(async () => {
       await dispatchComplaint(formData);
       setDispatchModal(null);
@@ -496,22 +536,228 @@ export function TriageDashboard({ complaints }: TriageDashboardProps) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4" role="dialog" aria-modal="true" aria-labelledby="dispatch-modal-title">
           <div className="w-full max-w-lg rounded-sm border border-[var(--color-border)] bg-[var(--color-bg)] p-5 shadow-2xl">
             <h2 id="dispatch-modal-title" className="text-lg font-semibold text-[var(--color-text)]">
-              Confirm Dispatch to {dispatchModal.agency}
+              Confirm Dispatch to {dispatchModal.draft.agency}
             </h2>
             <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">
-              You are about to send this complaint to {dispatchModal.agency} via AutoSend.
+              Review and edit the outgoing dispatch payload before sending.
             </p>
-            {dispatchModal.summary ? (
-              <p className="mt-2 rounded-sm border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-xs text-[var(--color-text-secondary)]">
-                Summary preview: {dispatchModal.summary}
-              </p>
-            ) : null}
-            {dispatchModal.recommendedAgency && dispatchModal.recommendedAgency !== dispatchModal.agency ? (
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <label className="space-y-1 text-xs text-[var(--color-text-secondary)]">
+                Dispatch to
+                <select
+                  value={dispatchModal.draft.agency}
+                  onChange={(event) =>
+                    setDispatchModal((previous) =>
+                      previous
+                        ? {
+                            ...previous,
+                            draft: { ...previous.draft, agency: event.target.value as DispatchAgency },
+                          }
+                        : previous,
+                    )
+                  }
+                  className="h-9 w-full rounded-sm border border-[var(--color-border)] bg-[var(--color-bg)] px-2 text-sm text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
+                >
+                  {dispatchAgencies.map((agency) => (
+                    <option key={agency} value={agency}>
+                      {agency}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="space-y-1 text-xs text-[var(--color-text-secondary)]">
+                Recipient email (optional override)
+                <input
+                  type="email"
+                  value={dispatchModal.draft.recipientEmail}
+                  onChange={(event) =>
+                    setDispatchModal((previous) =>
+                      previous
+                        ? {
+                            ...previous,
+                            draft: { ...previous.draft, recipientEmail: event.target.value },
+                          }
+                        : previous,
+                    )
+                  }
+                  className="h-9 w-full rounded-sm border border-[var(--color-border)] bg-[var(--color-bg)] px-2 text-sm text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
+                  placeholder="Use configured agency email when blank"
+                />
+              </label>
+
+              <label className="space-y-1 text-xs text-[var(--color-text-secondary)] sm:col-span-2">
+                Complaint text
+                <textarea
+                  value={dispatchModal.draft.complaintText}
+                  onChange={(event) =>
+                    setDispatchModal((previous) =>
+                      previous
+                        ? {
+                            ...previous,
+                            draft: { ...previous.draft, complaintText: event.target.value },
+                          }
+                        : previous,
+                    )
+                  }
+                  rows={3}
+                  className="w-full rounded-sm border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1.5 text-sm text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
+                />
+              </label>
+
+              <label className="space-y-1 text-xs text-[var(--color-text-secondary)] sm:col-span-2">
+                AI summary
+                <textarea
+                  value={dispatchModal.draft.aiSummary}
+                  onChange={(event) =>
+                    setDispatchModal((previous) =>
+                      previous
+                        ? {
+                            ...previous,
+                            draft: { ...previous.draft, aiSummary: event.target.value },
+                          }
+                        : previous,
+                    )
+                  }
+                  rows={2}
+                  className="w-full rounded-sm border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1.5 text-sm text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
+                />
+              </label>
+
+              <label className="space-y-1 text-xs text-[var(--color-text-secondary)]">
+                AI category
+                <input
+                  value={dispatchModal.draft.aiCategory}
+                  onChange={(event) =>
+                    setDispatchModal((previous) =>
+                      previous
+                        ? {
+                            ...previous,
+                            draft: { ...previous.draft, aiCategory: event.target.value },
+                          }
+                        : previous,
+                    )
+                  }
+                  className="h-9 w-full rounded-sm border border-[var(--color-border)] bg-[var(--color-bg)] px-2 text-sm text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
+                />
+              </label>
+
+              <label className="space-y-1 text-xs text-[var(--color-text-secondary)]">
+                AI priority
+                <input
+                  value={dispatchModal.draft.aiPriority}
+                  onChange={(event) =>
+                    setDispatchModal((previous) =>
+                      previous
+                        ? {
+                            ...previous,
+                            draft: { ...previous.draft, aiPriority: event.target.value },
+                          }
+                        : previous,
+                    )
+                  }
+                  className="h-9 w-full rounded-sm border border-[var(--color-border)] bg-[var(--color-bg)] px-2 text-sm text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
+                />
+              </label>
+
+              <label className="space-y-1 text-xs text-[var(--color-text-secondary)]">
+                AI confidence
+                <input
+                  type="number"
+                  value={dispatchModal.draft.aiConfidence}
+                  onChange={(event) =>
+                    setDispatchModal((previous) =>
+                      previous
+                        ? {
+                            ...previous,
+                            draft: { ...previous.draft, aiConfidence: event.target.value },
+                          }
+                        : previous,
+                    )
+                  }
+                  className="h-9 w-full rounded-sm border border-[var(--color-border)] bg-[var(--color-bg)] px-2 text-sm text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
+                />
+              </label>
+
+              <label className="space-y-1 text-xs text-[var(--color-text-secondary)]">
+                County
+                <input
+                  value={dispatchModal.draft.reportCounty}
+                  onChange={(event) =>
+                    setDispatchModal((previous) =>
+                      previous
+                        ? {
+                            ...previous,
+                            draft: { ...previous.draft, reportCounty: event.target.value },
+                          }
+                        : previous,
+                    )
+                  }
+                  className="h-9 w-full rounded-sm border border-[var(--color-border)] bg-[var(--color-bg)] px-2 text-sm text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
+                />
+              </label>
+
+              <label className="space-y-1 text-xs text-[var(--color-text-secondary)] sm:col-span-2">
+                Sender location
+                <input
+                  value={dispatchModal.draft.senderLocation}
+                  onChange={(event) =>
+                    setDispatchModal((previous) =>
+                      previous
+                        ? {
+                            ...previous,
+                            draft: { ...previous.draft, senderLocation: event.target.value },
+                          }
+                        : previous,
+                    )
+                  }
+                  className="h-9 w-full rounded-sm border border-[var(--color-border)] bg-[var(--color-bg)] px-2 text-sm text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
+                />
+              </label>
+
+              <label className="space-y-1 text-xs text-[var(--color-text-secondary)]">
+                Submitted at
+                <input
+                  type="datetime-local"
+                  value={dispatchModal.draft.submittedAt}
+                  onChange={(event) =>
+                    setDispatchModal((previous) =>
+                      previous
+                        ? {
+                            ...previous,
+                            draft: { ...previous.draft, submittedAt: event.target.value },
+                          }
+                        : previous,
+                    )
+                  }
+                  className="h-9 w-full rounded-sm border border-[var(--color-border)] bg-[var(--color-bg)] px-2 text-sm text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
+                />
+              </label>
+
+              <label className="inline-flex items-center gap-2 pt-6 text-xs text-[var(--color-text-secondary)]">
+                <input
+                  type="checkbox"
+                  checked={dispatchModal.draft.requiresIpoaForm}
+                  onChange={(event) =>
+                    setDispatchModal((previous) =>
+                      previous
+                        ? {
+                            ...previous,
+                            draft: { ...previous.draft, requiresIpoaForm: event.target.checked },
+                          }
+                        : previous,
+                    )
+                  }
+                />
+                Requires IPOA form
+              </label>
+            </div>
+            {dispatchModal.recommendedAgency && dispatchModal.recommendedAgency !== dispatchModal.draft.agency ? (
               <p className="mt-2 rounded-sm border border-[#fecdca] bg-[#fff3f2] px-3 py-2 text-xs text-[#b42318]">
-                AI recommended {dispatchModal.recommendedAgency}, but you selected {dispatchModal.agency}. Confirm to continue.
+                AI recommended {dispatchModal.recommendedAgency}, but you selected {dispatchModal.draft.agency}. Confirm to continue.
               </p>
             ) : null}
-            {dispatchModal.agency === "IPOA" && dispatchModal.requiresIpoaForm ? (
+            {dispatchModal.draft.agency === "IPOA" && dispatchModal.draft.requiresIpoaForm ? (
               <div className="mt-3 rounded-sm border border-[#fecdca] bg-[#fff3f2] p-3">
                 <p className="text-xs text-[#b42318]">This complaint requires IPOA form confirmation before send.</p>
                 <label className="mt-2 inline-flex items-start gap-2 text-xs text-[#b42318]">
@@ -539,11 +785,11 @@ export function TriageDashboard({ complaints }: TriageDashboardProps) {
                 onClick={confirmDispatch}
                 disabled={
                   isDispatchPending ||
-                  (dispatchModal.agency === "IPOA" && dispatchModal.requiresIpoaForm && !ipoaAcknowledged)
+                  (dispatchModal.draft.agency === "IPOA" && dispatchModal.draft.requiresIpoaForm && !ipoaAcknowledged)
                 }
                 className="inline-flex h-9 items-center rounded-sm border border-[var(--color-text)] bg-[var(--color-text)] px-3 text-xs font-semibold text-white transition-colors duration-200 ease-in-out hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {isDispatchPending ? "Sending..." : `Confirm and Dispatch to ${dispatchModal.agency}`}
+                {isDispatchPending ? "Sending..." : `Confirm and Dispatch to ${dispatchModal.draft.agency}`}
               </button>
             </div>
           </div>

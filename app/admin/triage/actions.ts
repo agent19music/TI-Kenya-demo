@@ -245,18 +245,17 @@ async function triageWithGemini(rawComplaint: string) {
 function buildDispatchPayload(args: {
   agency: AllowedAgency;
   recipientEmail: string;
-  complaint: {
-    id: string;
-    raw_complaint: string;
-    ai_category: string;
-    ai_priority: string;
-    ai_confidence: number;
-    ai_summary: string | null;
-    report_county: string | null;
-    sender_city: string | null;
-    sender_country: string | null;
-    created_at: string;
-    requires_ipoa_form: boolean;
+  dispatchData: {
+    complaintId: string;
+    complaintText: string;
+    aiSummary: string;
+    aiCategory: string;
+    aiPriority: string;
+    aiConfidence: number;
+    reportCounty: string;
+    senderLocation: string;
+    submittedAt: string;
+    requiresIpoaForm: boolean;
   };
 }) {
   const env = getEnv();
@@ -281,16 +280,16 @@ function buildDispatchPayload(args: {
       : undefined,
     template_id: templateByAgency[args.agency],
     data: {
-      complaint_id: args.complaint.id,
-      complaint_text: args.complaint.raw_complaint,
-      ai_summary: args.complaint.ai_summary || "No summary available",
-      ai_category: args.complaint.ai_category,
-      ai_priority: args.complaint.ai_priority,
-      ai_confidence: args.complaint.ai_confidence,
-      report_county: args.complaint.report_county || "Unknown",
-      sender_location: [args.complaint.sender_city, args.complaint.sender_country].filter(Boolean).join(", ") || "Unknown",
-      submitted_at: args.complaint.created_at,
-      requires_ipoa_form: args.complaint.requires_ipoa_form ? "Yes" : "No",
+      complaint_id: args.dispatchData.complaintId,
+      complaint_text: args.dispatchData.complaintText,
+      ai_summary: args.dispatchData.aiSummary,
+      ai_category: args.dispatchData.aiCategory,
+      ai_priority: args.dispatchData.aiPriority,
+      ai_confidence: args.dispatchData.aiConfidence,
+      report_county: args.dispatchData.reportCounty,
+      sender_location: args.dispatchData.senderLocation,
+      submitted_at: args.dispatchData.submittedAt,
+      requires_ipoa_form: args.dispatchData.requiresIpoaForm ? "Yes" : "No",
     },
   };
 }
@@ -380,6 +379,16 @@ export async function retriageComplaint(formData: FormData) {
 export async function dispatchComplaint(formData: FormData) {
   const complaintId = String(formData.get("complaintId") || "").trim();
   const agency = String(formData.get("agency") || "").trim();
+  const recipientEmailOverride = String(formData.get("recipientEmail") || "").trim();
+  const complaintTextOverride = String(formData.get("complaintText") || "").trim();
+  const aiSummaryOverride = String(formData.get("aiSummary") || "").trim();
+  const aiCategoryOverride = String(formData.get("aiCategory") || "").trim();
+  const aiPriorityOverride = String(formData.get("aiPriority") || "").trim();
+  const aiConfidenceRaw = String(formData.get("aiConfidence") || "").trim();
+  const reportCountyOverride = String(formData.get("reportCounty") || "").trim();
+  const senderLocationOverride = String(formData.get("senderLocation") || "").trim();
+  const submittedAtOverride = String(formData.get("submittedAt") || "").trim();
+  const requiresIpoaFormOverride = String(formData.get("requiresIpoaForm") || "").trim();
   const ipoaAcknowledged = String(formData.get("ipoaAcknowledged") || "").trim() === "yes";
 
   if (!complaintId || !isValidAgency(agency)) {
@@ -410,13 +419,16 @@ export async function dispatchComplaint(formData: FormData) {
     return;
   }
 
-  if (agency === "IPOA" && complaint.requires_ipoa_form && !ipoaAcknowledged) {
+  const requiresIpoaForm =
+    requiresIpoaFormOverride === "yes" ? true : requiresIpoaFormOverride === "no" ? false : complaint.requires_ipoa_form;
+
+  if (agency === "IPOA" && requiresIpoaForm && !ipoaAcknowledged) {
     await setDispatchFailure(complaintId, "IPOA dispatch requires explicit form acknowledgment.");
     revalidatePath("/admin/triage");
     return;
   }
 
-  const recipientEmail = recipientByAgency[agency];
+  const recipientEmail = recipientEmailOverride || recipientByAgency[agency];
   if (!env.AUTOSEND_API_KEY) {
     await setDispatchFailure(complaintId, "Missing AUTOSEND_API_KEY configuration.");
     revalidatePath("/admin/triage");
@@ -429,10 +441,27 @@ export async function dispatchComplaint(formData: FormData) {
     return;
   }
 
+  const parsedAiConfidence = Number(aiConfidenceRaw);
+  const aiConfidence = Number.isFinite(parsedAiConfidence) ? parsedAiConfidence : complaint.ai_confidence;
+
+  const dispatchData = {
+    complaintId: complaint.id,
+    complaintText: complaintTextOverride || complaint.raw_complaint,
+    aiSummary: aiSummaryOverride || complaint.ai_summary || "No summary available",
+    aiCategory: aiCategoryOverride || complaint.ai_category,
+    aiPriority: aiPriorityOverride || complaint.ai_priority,
+    aiConfidence,
+    reportCounty: reportCountyOverride || complaint.report_county || "Unknown",
+    senderLocation:
+      senderLocationOverride || [complaint.sender_city, complaint.sender_country].filter(Boolean).join(", ") || "Unknown",
+    submittedAt: submittedAtOverride || complaint.created_at,
+    requiresIpoaForm,
+  };
+
   const payload = buildDispatchPayload({
     agency,
     recipientEmail,
-    complaint,
+    dispatchData,
   });
 
   try {
