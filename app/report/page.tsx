@@ -1,7 +1,8 @@
 "use client";
 
 import { ChangeEvent, FormEvent, useRef, useState } from "react";
-import {FileArrowUpIcon } from "@phosphor-icons/react";
+import Link from "next/link";
+import { FileArrowUpIcon } from "@phosphor-icons/react";
 
 type SubmissionState = {
   status: "idle" | "success" | "error";
@@ -275,6 +276,12 @@ export default function ReportPage() {
             <p className="max-w-xl text-base leading-7 text-[var(--color-text-secondary)]">
               Thank you. Your report has been securely submitted and routed for triage. You can close this page now.
             </p>
+            <Link
+              href="/admin/triage"
+              className="inline-flex h-10 items-center rounded-sm border border-[var(--color-border)] px-4 text-sm font-semibold text-[var(--color-text)] transition-colors duration-200 ease-in-out hover:bg-[var(--color-surface-muted)]"
+            >
+              View admin triage →
+            </Link>
           </div>
         ) : (
           <div className="space-y-6">
