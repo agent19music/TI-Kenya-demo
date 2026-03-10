@@ -534,7 +534,7 @@ export function TriageDashboard({ complaints }: TriageDashboardProps) {
 
       {dispatchModal ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4" role="dialog" aria-modal="true" aria-labelledby="dispatch-modal-title">
-          <div className="w-full max-w-lg rounded-sm border border-[var(--color-border)] bg-[var(--color-bg)] p-5 shadow-2xl">
+          <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-sm border border-[var(--color-border)] bg-[var(--color-bg)] p-5 shadow-2xl sm:max-h-[85vh]">
             <h2 id="dispatch-modal-title" className="text-lg font-semibold text-[var(--color-text)]">
               Confirm Dispatch to {dispatchModal.draft.agency}
             </h2>
@@ -600,7 +600,7 @@ export function TriageDashboard({ complaints }: TriageDashboardProps) {
                         : previous,
                     )
                   }
-                  rows={3}
+                  rows={6}
                   className="w-full rounded-sm border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1.5 text-sm text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
                 />
               </label>
@@ -619,7 +619,7 @@ export function TriageDashboard({ complaints }: TriageDashboardProps) {
                         : previous,
                     )
                   }
-                  rows={2}
+                  rows={4}
                   className="w-full rounded-sm border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1.5 text-sm text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
                 />
               </label>

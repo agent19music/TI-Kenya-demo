@@ -37,7 +37,7 @@ export default function Home() {
             TI-Kenya &times; Uzski Corp
           </h2>
           <p className="max-w-md text-base leading-7 text-[var(--color-text-secondary)]">
-            AI workflow tools demo — complaint intake, intelligent triage, and
+            AI workflow tools demo  on complaint intake, intelligent triage, and
             agency dispatch for anti-corruption reporting.
           </p>
         </div>

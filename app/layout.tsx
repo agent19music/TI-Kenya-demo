@@ -8,7 +8,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "TI Kenya Prototype",
+  title: "TI-Kenya Prototype",
   description: "Anonymous corruption reporting and triage dashboard prototype",
 };
 

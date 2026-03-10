@@ -54,6 +54,19 @@ function isValidAgency(value: string): value is AllowedAgency {
   return agencyOptions.some((agency) => agency === value);
 }
 
+function resolveRecipientEmail(overrideEmail: string, defaultEmail: string): string {
+  const override = overrideEmail.trim();
+  if (override) {
+    return override;
+  }
+
+  return defaultEmail.trim();
+}
+
+function isLikelyEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
 function mapAgencyFromCategory(category: AllowedCategory): AllowedAgency | null {
   if (category === "Police Harassment") {
     return "IPOA";
@@ -428,7 +441,7 @@ export async function dispatchComplaint(formData: FormData) {
     return;
   }
 
-  const recipientEmail = recipientEmailOverride || recipientByAgency[agency];
+  const recipientEmail = resolveRecipientEmail(recipientEmailOverride, recipientByAgency[agency]);
   if (!env.AUTOSEND_API_KEY) {
     await setDispatchFailure(complaintId, "Missing AUTOSEND_API_KEY configuration.");
     revalidatePath("/admin/triage");
@@ -437,6 +450,12 @@ export async function dispatchComplaint(formData: FormData) {
 
   if (!recipientEmail) {
     await setDispatchFailure(complaintId, `Missing recipient email configuration for ${agency}.`);
+    revalidatePath("/admin/triage");
+    return;
+  }
+
+  if (!isLikelyEmail(recipientEmail)) {
+    await setDispatchFailure(complaintId, `Recipient email is invalid for ${agency}: ${recipientEmail}`);
     revalidatePath("/admin/triage");
     return;
   }
